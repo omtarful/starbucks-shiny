@@ -1,0 +1,10 @@
+name: starbucks_project
+title:
+username: omtarful
+account: omtarful
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 11720327
+bundleId: 8477178
+url: https://omtarful.shinyapps.io/starbucks_project/
+version: 1

@@ -1,0 +1,370 @@
+---
+title: "Report on healthiness of Starbuck Drinks using nutirtional information"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    source_code: embed
+---
+```{css, echo=FALSE}
+.section {
+  padding-top: 150px !important; /* Adjust this value as needed */
+  margin-top: -70px !important; /* Adjust this value if necessary */
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8) 
+library(flexdashboard)
+library(tidyverse)
+library(visdat)
+library(gridExtra)
+library(ggcorrplot)
+library(rpart)
+library(plotly)
+
+```
+
+```{r read-data, cache = TRUE, echo = FALSE}
+starbucks <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-12-21/starbucks.csv')
+
+```
+
+Introduction {data-icon="fa-address-book"}
+===================================== 
+
+Row {data-width = 600, .scrollable-section}
+-----
+### **Introduction**
+
+Data was extracted from the [Starbucks Coffee Company Beverage Nutrition Information pdf](https://globalassets.starbucks.com/assets/94fbcc2ab1e24359850fa1870fc988bc.pdf). It contains nutritional information on all drinks in the starbucks menu. More information on the dataset can be found [here](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md). 
+
+**Purpose of this analysis report**:
+
+We will explore and analyze the starbucks dataset to find out how healthy different drinks are using variables like the amount of sugar, trans fats and proteins. This analysis can provide insight on which drink choices can affect consumer health for the better or worse.
+
+There are four main areas of analysis for this report:
+ * With the help of the Harmonized Learning Outcomes (HLO) to measure the human capital across different regions. This will help to understand and interpret the education promise for different countries, subdivided into various income groups. Moreover, it may provide some insights on how to improve the human capital development issue over the world.
+
+There are four main areas of analysis for this report:
+
+* Part 1: To obtain an overview of the starbucks dataset and see which drinks have the most calories. 
+  
+  - Research Question: Q1 Which drinks have the most calories?
+
+* Part 2: To compare the nutritional difference among coffee based drinks and tea based drinks.
+
+  - Research Question: Q2 Do coffee based drinks contain more calories than tea based drinks? 
+
+* Part 3: To compare drinks containing different types of milk.
+
+  - Research Question: Q3 How do drinks with different types of milk compare in terms of nutrients? Does the type of milk used in the drink affect the nutritional values?
+
+* Part 4: Application on model analysis, to examine any possible linear relationship between variables.
+
+   - Research Question: Q4: Which variables affect the amount calories? What conclusion can you make? 
+
+***
+
+***
+
+Part 0: Data Cleaning 
+===================================== 
+
+Row {.tabset data-height=550, .scrollable-section}
+-----
+
+### **Missing NAs in the variables**
+
+```{r missing-value-visualization}
+starbucks %>% 
+  visdat::vis_miss(sort_miss = TRUE)
+#there are no missing values
+
+```
+
+There are no missing values in the dataset.
+
+### **Checking for duplicates**
+
+```{r check-duplicates}
+#check for duplicates
+sum(starbucks %>%
+  duplicated())
+```
+Apparently there is no duplicates in the dataset.
+
+### **Checking for capitalization**
+
+```{r standardize-capitalization}
+#check if text is consistent
+unique(starbucks$size)
+unique(starbucks$product_name)
+
+
+```
+
+Text seems to be consistent.
+
+### **Checking for Data Types**
+
+```{r check-data-types}
+#Check if data types are consistent
+str(starbucks)
+```
+
+Variables `milk`and `whip` are numeric. We will convert them to factor and boolean respectively. Variable `size` is character and will be converted to factor. `fiber_g` and `trans_fat_g` seem to be characters, they will be converted to numeric. 
+
+```{r change-data-types}
+#data cleaning
+# whip to binary
+# size should be converted to factor
+starbucks = starbucks %>%
+  mutate(across(c(milk, 
+                  size),
+                factor)) %>%
+  mutate(across(whip, as.logical)) %>%
+  mutate(across(c(fiber_g, trans_fat_g), as.numeric))
+
+```
+
+
+```{r}
+starbucks$milk = recode_factor(starbucks$milk, 
+                               "0" = "none", 
+                               "1" = "nonfat",
+                               "2" = "2%",
+                               "3" = "soy",
+                               "4" = "coconut",
+                               "5" = "whole")
+
+
+
+```
+
+Part 1: Data Exploration 
+===================================== 
+Row {.tabset data-height=550, .scrollable-section}
+-----
+
+By invoking the `head()` function, we can have a sneak peak of the data. 
+
+```{r overview-starbucks-1, echo = TRUE}
+#sneak peak of data
+head(starbucks)
+```
+
+
+```{r overview-starbucks-2, echo = TRUE }
+#there are 1147 rows and 15 columns
+#show dimensions of the dataset
+dim(starbucks)
+#get names of columns
+names(starbucks)
+
+```
+We can observe there are 1147 rows and 15 variables.
+
+```{r overview-starbucks-3, echo = TRUE}
+summary(starbucks)
+```
+For the variable `cholesterol_mg` we can see a difference between the mean and the median. 
+
+```{r overview-starbucks-4, echo = TRUE}
+starbucks %>%
+  arrange(desc(calories))
+
+```
+Here we can see a ranking of drinks with the most calories. White Hot Chocolate Mocha (591 ml) has the highest amount of calories. 
+
+We can visualize the distribution of calories using a histogram.
+
+```{r}
+ggplot(starbucks, aes(x=calories)) +
+  geom_histogram(aes(y=..density..), colour="white", fill="#00704A") + 
+  geom_density()
+
+```
+
+Part 2: Coffee vs Tea
+===================================== 
+Row {.tabset data-height=500, .scrollable-section}
+-----
+
+```{r clean-coffee}
+tea_based_drinks = starbucks %>% 
+  filter(grepl("tea", product_name, ignore.case = TRUE)) %>%
+  mutate(has_coffee = FALSE)
+coffee_based_drinks = starbucks %>%              filter(grepl("Cof|Caf|Espresso|Mocha|Cappuccino|Mocha|Macchiatto|Caffè Latte", product_name, ignore.case = TRUE)) %>%
+  mutate(has_coffee = TRUE)
+
+drinks = rbind(tea_based_drinks, coffee_based_drinks)
+
+
+```
+
+We can observe that in both histograms, coffee and tea based drinks follow a similar distribution.
+
+```{r}
+p1 = ggplot(coffee_based_drinks, aes(x=calories)) +
+  ggtitle("Histogram of Calories for drinks containing coffee") +
+  geom_histogram(aes(y=..density..), colour="white", fill="#6F4E37") + 
+  geom_density()
+
+p2 = ggplot(tea_based_drinks, aes(x=calories)) +
+  ggtitle("Histogram of Calories for drinks containing tea") +
+  geom_histogram(aes(y=..density..), colour="white", fill="orange") + 
+  geom_density()
+
+
+
+
+grid.arrange(p1,p2, nrow = 2)
+
+
+```
+
+
+Now let's compare drinks containing no milk. Drinks with coffee and no milk follow a left skewed distribution.
+
+
+```{r}
+
+drinks %>% 
+  filter(milk == "none") %>%
+  ggplot(aes(x=calories, color = has_coffee)) +
+    ggtitle("Histogram of Calories for drinks containing coffee and no milk") +
+    geom_histogram(aes(y=..density..), colour="white", fill="brown") + 
+    geom_density()
+
+
+
+```
+
+Part 3: Differences between drinks containing milk
+===================================== 
+
+Row {.tabset data-height=550 data-width=1000, .scrollable-section}
+-----
+
+By creating a boxplot of the amount of calories for drinks divided by milk type, we can observe that whole milk has the most calories. However, Coconut milk has the most saturated fats.
+```{r}
+p1 = starbucks %>%
+  ggplot(aes(x=milk, y=calories, color = milk)) + 
+    geom_boxplot() + 
+    ggtitle("Different boxplots for calories per type of milk")
+p2 = starbucks %>%
+  ggplot(aes(x=milk, y=saturated_fat_g, color = milk)) + 
+    geom_boxplot() + 
+    ggtitle("Different boxplots for saturated fat(g) per type of milk")
+p3 = starbucks %>%
+  ggplot(aes(x=milk, y=trans_fat_g, color = milk)) + 
+    geom_boxplot() + 
+    ggtitle("Different boxplots for trans fat (g) per type of milk")
+p4 = starbucks %>%
+  ggplot(aes(x=milk, y=total_fat_g, color = milk)) + 
+    geom_boxplot() + 
+    ggtitle("Different boxplots for total fat (g) per type of milk")
+
+grid.arrange(p1,p2,p3,p4, nrow = 2, ncol = 2)
+
+```
+
+Part 4: Analyzing variables and producing models.
+===================================== 
+
+Row {.tabset data-height=550 data-width=1000, .scrollable-section}
+-----
+
+First we start by checking for correlation. Most numeric variables have correlation of 0.5 and above between each other, only exception is `caffeine_mg`. It shows low correlation with all other variables.
+
+
+```{r}
+ggplotly(model.matrix(~0+., data=starbucks %>% select(where(is.numeric))) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE))
+```
+
+Since the assumption of linearity does not hold for our response variable with most predictors except `caffeine_mg`. We then used linear regression to check if the response variable was being affected by the output.
+
+
+```{r}
+starbucks_lm <- lm(calories~caffeine_mg, data=starbucks)
+summary(starbucks_lm)
+
+```
+```{r}
+par(mfrow=c(2,2))
+plot(starbucks_lm)
+```
+
+The Residuals vs Fitted plot on the upper left corner is not horizontal at zero, assumption of linearity does not hold. The Q-Q plot at the upper right corner shows residuals plots following the straight dashed line, normality assumption holds. Scale-Location plot at the lower left corner of the figure show points scattered in an almost vertical-line above and below the line across the plot. The are no influential according to Residual vs Leverage plot.
+
+Conclusion
+===================================== 
+
+
+**Conclusion**
+
+Findings from the data analysis:
+
+1. Analysis shows that White Chocolate Mocha (Venti, Whole Milk) is the drink with the most calories in the dataset, containing 640 calories. Lowest amount of calories with only 0 calories is the Early Gray Morning tea. 
+
+2. From the analysis, both drinks containing coffee and tea on the starbucks menu have similar amount of calories. However, if milk is removed, tea is the option with the lowest amount of calories.
+
+3. In this part, it shows that drinks with whole milk have the highest amount on  of calories, trans fats and total fats compared to drinks containing other types of milk. However, drinks containing coconut milk have a higher amount of saturated fats compared to other milks.
+
+4. Most variables have a strong correlation between each other, so using multiple linear regression is not possible. However, `caffeine_mg` has no correlation with other variables so it was modeled against `calories` but the diagnostic plots that many assumptions did not hold.  Therefore, further modeling test will be required for a more confirmed and precise conclusion.
+
+***
+
+
+
+References
+===================================== 
+
+Row {.tabset data-height=550, .scrollable-section}
+-----
+
+
+**Reference**
+
+[1] Wickham et al., (2019). Welcome to the tidyverse. Journal of Open
+  Source Software, 4(43), 1686, https://doi.org/10.21105/joss.01686
+
+[2] Comprehensive R Archive Network (CRAN). (2021, May 14). CRAN - Package naniar. Naniar: Data Structures, Summaries, and Visualisations for Missing Data. https://cran.r-project.org/web/packages/naniar/index.html
+
+[3] Auguie, B. (2017, September 9). CRAN - Package gridExtra. GridExtra: Miscellaneous Functions for "Grid" Graphics. https://cran.r-project.org/web/packages/gridExtra/index.html
+
+[4] Comprehensive R Archive Network (CRAN). (2019, May 31). CRAN - Package ggResidpanel. GgResidpanel: Panels and Interactive Versions of Diagnostic Plots using 'ggplot2'. https://cran.r-project.org/web/packages/ggResidpanel/index.html
+
+[5] Comprehensive R Archive Network (CRAN). (2021a, April 5). CRAN - Package broom. Broom: Convert Statistical Objects into Tidy Tibbles. https://cran.r-project.org/web/packages/broom/index.html
+
+[6] Müller, K. (2020, December 13). CRAN - Package here. Readxl: Read Excel Files. https://cran.r-project.org/web/packages/here/index.html
+
+[7] Comprehensive R Archive Network (CRAN). (2019a, March 13). CRAN - Package Readxl. R-Project. https://cran.r-project.org/web/packages/readxl/index.html
+
+[8] Comprehensive R Archive Network (CRAN). (2020, October 5). CRAN - Package readr. readr: Read Rectangular Text Data. https://cran.r-project.org/web/packages/readr/index.html
+
+[9] Hao Zhu (2021). kableExtra: Construct Complex Table with 'kable'
+  and Pipe Syntax. R package version 1.3.4.
+  https://CRAN.R-project.org/package=kableExtra
+
+[10] Xie, Y. (2021, April 22). CRAN - Package bookdown. bookdown: Authoring Books and Technical Documents with R Markdown. https://cran.r-project.org/web/packages/bookdown/index.html
+
+[11] H. Wickham. ggplot2: Elegant Graphics for Data Analysis.
+  Springer-Verlag New York, 2016.
+
+[12] Comprehensive R Archive Network (CRAN). (2021a, January 10). CRAN - Package plotly. Plotly: Create Interactive Web Graphics via “Plotly.Js.” https://cran.r-project.org/web/packages/plotly/index.html
+
+[13] Tierney, N. (2019, February 15). CRAN - Package visdat. Visdat: Preliminary Visualisation of Data. https://cran.r-project.org/web/packages/visdat/index.html
+
+[14] Comprehensive R Archive Network (CRAN). (2021e, May 5). CRAN - Package dplyr. Dplyr: A Grammar of Data Manipulation. https://cran.r-project.org/web/packages/dplyr/index.html
+
+[15] R Core Team (2021). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL
+https://www.R-project.org/.
+
+[16] https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md
+
+[17] https://globalassets.starbucks.com/assets/94fbcc2ab1e24359850fa1870fc988bc.pdf
+
